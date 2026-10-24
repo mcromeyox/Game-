@@ -2,10 +2,13 @@ name: Build & Package Android App
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "**" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "**" ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -16,37 +19,54 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: 'temurin'
+          java-version: '21'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Restore Debug Keystore
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      - name: Ensure Environment Configuration
+        run: |
+          # Ensure .env exists to prevent Secrets Gradle Plugin build errors
+          touch .env
+          if [ -f ".env.example" ]; then
+            cp -n .env.example .env || true
+          fi
+
+      - name: Restore or Generate Debug Keystore
         run: |
           if [ -f "debug.keystore.base64" ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-            echo "debug.keystore restored successfully"
+            base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || true
           fi
+          if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
+            echo "Generating new debug.keystore..."
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          echo "debug.keystore is verified and ready."
 
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BattleApex-Debug-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
           retention-days: 30
 
       - name: Build Android App Bundle (AAB for Google Play)
-        run: ./gradlew bundleDebug --stacktrace
+        run: ./gradlew bundleDebug --no-daemon --stacktrace
         continue-on-error: true
 
       - name: Upload AAB Bundle Artifact
@@ -54,6 +74,6 @@ jobs:
         with:
           name: BattleApex-AppBundle-AAB
           path: app/build/outputs/bundle/**/*.aab
+          if-no-files-found: warn
           retention-days: 30
         continue-on-error: true
-
