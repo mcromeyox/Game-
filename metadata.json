@@ -1,0 +1,6 @@
+{
+  "name": "Battle Apex",
+  "description": "تجربة باتل رويال متكاملة بأسلوب ببجي مع قيادة واقعية للمركبات وفيزياء متطورة وجودة رسومات فائقة وأسلحة متنوعة",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
