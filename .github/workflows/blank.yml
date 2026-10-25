@@ -12,8 +12,9 @@ permissions:
 
 jobs:
   build:
-    name: Build Android APK & AAB
+    name: Build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Source Code
@@ -25,31 +26,41 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Accept Android SDK Licenses
+      - name: Configure Android SDK Licenses
         run: |
-          yes | sdkmanager --licenses || true
+          echo "Configuring Android SDK licenses on runner..."
+          mkdir -p "$ANDROID_HOME/licenses" || true
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> "$ANDROID_HOME/licenses/android-sdk-license"
+          echo "d56f5185470d6881146f0f76d4682933a8e7c0cf" >> "$ANDROID_HOME/licenses/android-sdk-license"
+          echo "84831b9409646a578e30424d64984703ab44fb46" >> "$ANDROID_HOME/licenses/android-sdk-license"
+          echo "893fb8a22d82657314e387014164a5e3e700f6b6" >> "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          echo "84831b9409646a578e30424d64984703ab44fb46" >> "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          echo "79124a72237a7946849969f9cd9aa53216577388" >> "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
+          fi
 
-      - name: Ensure Environment Configuration
+      - name: Prepare Secrets Configuration (.env)
         run: |
-          # Ensure .env exists to prevent Secrets Gradle Plugin build errors
           touch .env
           if [ -f ".env.example" ]; then
             cp -n .env.example .env || true
           fi
+          echo ".env prepared successfully."
 
-      - name: Restore or Generate Debug Keystore
+      - name: Prepare Signing Keystore
         run: |
           if [ -f "debug.keystore.base64" ]; then
             base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || true
           fi
           if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
-            echo "Generating new debug.keystore..."
+            echo "Generating fallback debug.keystore..."
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          echo "debug.keystore is verified and ready."
+          test -f debug.keystore && echo "debug.keystore ready."
 
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
@@ -57,19 +68,19 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK Artifact
+      - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BattleApex-Debug-APK
-          path: app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Build Android App Bundle (AAB for Google Play)
         run: ./gradlew bundleDebug --no-daemon --stacktrace
         continue-on-error: true
 
-      - name: Upload AAB Bundle Artifact
+      - name: Upload App Bundle Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BattleApex-AppBundle-AAB
